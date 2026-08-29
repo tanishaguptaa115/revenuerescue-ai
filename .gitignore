@@ -36,3 +36,5 @@ Thumbs.db
 # IDE settings
 .vscode/
 .idea/
+# Generated datasets / reports
+output/
