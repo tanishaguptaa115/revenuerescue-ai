@@ -249,7 +249,7 @@ def save_outputs(
     seed: int = RANDOM_SEED,
 ) -> Dict[str, str]:
     """
-    Write the three generation deliverables to disk. Kept entirely
+    Write the four generation deliverables to disk. Kept entirely
     separate from generate_dataset() so the generation logic itself stays
     a pure, side-effect-free function.
 
@@ -259,6 +259,11 @@ def save_outputs(
         (recovery_label, risk_label) so it shows varied scenarios rather
         than an arbitrary random slice.
       - generation_report.md: the summary report in markdown.
+      - customer_profiles.csv: the complete customer_profiles DataFrame
+        exactly as generated (archetype and all customer-level latent
+        attributes), persisted so downstream consumers (e.g. the ML
+        data-preparation layer) can join customer-level fields without
+        needing to regenerate the dataset themselves.
 
     Returns a dict mapping each deliverable name to its written file path.
     """
@@ -286,10 +291,16 @@ def save_outputs(
     with open(report_path, "w") as f:
         f.write(_format_summary_markdown(summary))
 
+    # Persist customer_profiles exactly as generated - no filtering,
+    # reordering, or transformation of any column.
+    customer_profiles_path = os.path.join(output_dir, "customer_profiles.csv")
+    customer_profiles.to_csv(customer_profiles_path, index=False)
+
     return {
         "dataset": dataset_path,
         "sample": sample_path,
         "report": report_path,
+        "customer_profiles": customer_profiles_path,
     }
 
 
