@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 from ml.decision_engine import DecisionInput, decide
 from services.merchant_policy_service import get_merchant_policy
 from ml.inference import score_transaction
+from services.decision_logging_service import persist_decision_flow
 
 
 # ---------------------------------------------------------------------------
@@ -205,11 +206,11 @@ def _make_decision(request: DecisionRequest) -> DecisionResponse:
 
     return DecisionResponse(
         merchant_id=policy.merchant_id,
-        action=result.action.value,
+        action=result.action,
         risk_score=result.risk_score,
         recovery_score=result.recovery_score,
         merchant_risk_tolerance=result.merchant_risk_tolerance,
-        reason_code=result.reason_code.value,
+        reason_code=result.reason_code,
         human_readable_reason=result.human_readable_reason,
         priority=result.priority,
         metadata=metadata,
@@ -288,6 +289,7 @@ def demo_decision() -> DecisionResponse:
 
 
 
+
 # ---------------------------------------------------------------------------
 # ML scoring + decision endpoint
 # ---------------------------------------------------------------------------
@@ -296,7 +298,17 @@ class ScoreAndDecisionRequest(BaseModel):
     """Complete feature payload for ML scoring followed by decisioning."""
 
     merchant_id: str = Field(..., min_length=1)
+
+    amount: float = Field(..., gt=0.0)
+
+    currency: str = Field(default="INR", min_length=3, max_length=3)
+
+    payment_method: str = "unknown"
+
     payment_failed: bool
+
+    failure_reason: Optional[str] = None
+
     is_soft_failure: Optional[bool] = None
 
     retry_count_so_far: int = Field(
@@ -304,14 +316,8 @@ class ScoreAndDecisionRequest(BaseModel):
         ge=0,
     )
 
-    amount: float = Field(
-        default=0.0,
-        ge=0.0,
-    )
-
-    payment_method: str = "unknown"
-
     risk_features: dict
+
     recovery_features: Optional[dict] = None
 
 
@@ -319,7 +325,14 @@ class ScoreAndDecisionRequest(BaseModel):
 def score_and_decide(
     request: ScoreAndDecisionRequest,
 ) -> DecisionResponse:
-    """Score with ML models, then run the merchant Decision Engine."""
+    """
+    Score a transaction with the trained ML models, run the merchant
+    Decision Engine, and persist the complete decision flow to Supabase.
+    """
+
+    # ---------------------------------------------------------------
+    # 1. ML scoring
+    # ---------------------------------------------------------------
 
     try:
         scores = score_transaction(
@@ -338,6 +351,10 @@ def score_and_decide(
             detail="ML scoring failed unexpectedly.",
         ) from exc
 
+    # ---------------------------------------------------------------
+    # 2. Decision Engine
+    # ---------------------------------------------------------------
+
     decision_request = DecisionRequest(
         merchant_id=request.merchant_id,
         risk_score=scores["risk_score"],
@@ -349,7 +366,81 @@ def score_and_decide(
         payment_method=request.payment_method,
     )
 
-    return _make_decision(decision_request)
+    result = _make_decision(decision_request)
+
+    # ---------------------------------------------------------------
+    # 3. Persist transaction + attempt + decision + audit
+    # ---------------------------------------------------------------
+
+    try:
+        persisted = persist_decision_flow(
+            merchant_id=request.merchant_id,
+            amount=request.amount,
+            currency=request.currency,
+            payment_method=request.payment_method,
+            payment_failed=request.payment_failed,
+            failure_reason=request.failure_reason,
+            recovery_probability=scores["recovery_score"],
+            risk_score=scores["risk_score"],
+            fatigue_score=None,
+            opportunity_score=None,
+            recommended_action=result.action,
+            policy_result=(
+                "blocked"
+                if result.action == "BLOCK"
+                else "requires_review"
+                if result.action == "REVIEW"
+                else "approved"
+            ),
+            reasoning={
+                "reason_code": result.reason_code,
+                "human_readable_reason": result.human_readable_reason,
+                "priority": result.priority,
+                "model_scores": scores,
+                "decision_metadata": result.metadata,
+            },
+            explanation=result.human_readable_reason,
+            retry_count_so_far=request.retry_count_so_far,
+        )
+    except (ValueError, RuntimeError) as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Decision persistence failed: {exc}",
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Decision persistence failed unexpectedly.",
+        ) from exc
+
+    # ---------------------------------------------------------------
+    # 4. Add persistence IDs to response metadata
+    # ---------------------------------------------------------------
+
+    metadata = dict(result.metadata)
+
+    metadata["persistence"] = {
+        "transaction_id": persisted.transaction_id,
+        "payment_attempt_id": persisted.payment_attempt_id,
+        "decision_id": persisted.decision_id,
+        "audit_event_id": persisted.audit_event_id,
+    }
+
+    return DecisionResponse(
+        merchant_id=result.metadata.get(
+            "merchant_id",
+            request.merchant_id,
+        ),
+        action=result.action,
+        risk_score=result.risk_score,
+        recovery_score=result.recovery_score,
+        merchant_risk_tolerance=result.merchant_risk_tolerance,
+        reason_code=result.reason_code,
+        human_readable_reason=result.human_readable_reason,
+        priority=result.priority,
+        metadata=metadata,
+    )
+
 
 
 # ---------------------------------------------------------------------------
