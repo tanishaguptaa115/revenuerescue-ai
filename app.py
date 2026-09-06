@@ -1,4 +1,4 @@
-"""
+﻿"""
 RevenueRescue AI - FastAPI Backend
 
 HTTP API layer over:
@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 
 from ml.decision_engine import DecisionInput, decide
 from services.merchant_policy_service import get_merchant_policy
+from ml.inference import score_transaction
 
 
 # ---------------------------------------------------------------------------
@@ -284,6 +285,71 @@ def demo_decision() -> DecisionResponse:
     )
 
     return _make_decision(demo_request)
+
+
+
+# ---------------------------------------------------------------------------
+# ML scoring + decision endpoint
+# ---------------------------------------------------------------------------
+
+class ScoreAndDecisionRequest(BaseModel):
+    """Complete feature payload for ML scoring followed by decisioning."""
+
+    merchant_id: str = Field(..., min_length=1)
+    payment_failed: bool
+    is_soft_failure: Optional[bool] = None
+
+    retry_count_so_far: int = Field(
+        default=0,
+        ge=0,
+    )
+
+    amount: float = Field(
+        default=0.0,
+        ge=0.0,
+    )
+
+    payment_method: str = "unknown"
+
+    risk_features: dict
+    recovery_features: Optional[dict] = None
+
+
+@app.post("/score-and-decide", response_model=DecisionResponse)
+def score_and_decide(
+    request: ScoreAndDecisionRequest,
+) -> DecisionResponse:
+    """Score with ML models, then run the merchant Decision Engine."""
+
+    try:
+        scores = score_transaction(
+            risk_features=request.risk_features,
+            recovery_features=request.recovery_features,
+            payment_failed=request.payment_failed,
+        )
+    except (ValueError, FileNotFoundError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="ML scoring failed unexpectedly.",
+        ) from exc
+
+    decision_request = DecisionRequest(
+        merchant_id=request.merchant_id,
+        risk_score=scores["risk_score"],
+        recovery_score=scores["recovery_score"],
+        payment_failed=request.payment_failed,
+        is_soft_failure=request.is_soft_failure,
+        retry_count_so_far=request.retry_count_so_far,
+        amount=request.amount,
+        payment_method=request.payment_method,
+    )
+
+    return _make_decision(decision_request)
 
 
 # ---------------------------------------------------------------------------
