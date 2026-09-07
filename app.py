@@ -16,8 +16,10 @@ This module:
 - does not perform feature engineering
 """
 
-from typing import Optional
+from pathlib import Path
+from typing import Dict, Optional
 
+import csv
 import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -37,7 +39,45 @@ ALLOWED_CORS_ORIGINS = [
     "http://localhost:3000",
     "http://localhost:5173",
 ]
+# ---------------------------------------------------------------------------
+# Customer profile lookup
+# ---------------------------------------------------------------------------
 
+CUSTOMER_PROFILES_PATH = (
+    Path(__file__).resolve().parent
+    / "output"
+    / "customer_profiles.csv"
+)
+
+
+def load_customer_profiles() -> Dict[str, dict]:
+    """Load synthetic customer profiles for real feature enrichment."""
+    if not CUSTOMER_PROFILES_PATH.exists():
+        raise FileNotFoundError(
+            f"Customer profiles file not found: {CUSTOMER_PROFILES_PATH}"
+        )
+
+    with CUSTOMER_PROFILES_PATH.open(
+        "r",
+        encoding="utf-8",
+        newline="",
+    ) as file:
+        reader = csv.DictReader(file)
+
+        profiles = {}
+
+        for row in reader:
+            customer_id = row.get("customer_id")
+
+            if not customer_id:
+                continue
+
+            profiles[customer_id] = row
+
+    return profiles
+
+
+CUSTOMER_PROFILES = load_customer_profiles()
 
 # ---------------------------------------------------------------------------
 # FastAPI application
@@ -299,6 +339,8 @@ class ScoreAndDecisionRequest(BaseModel):
 
     merchant_id: str = Field(..., min_length=1)
 
+    customer_id: str = Field(..., min_length=1)
+
     amount: float = Field(..., gt=0.0)
 
     currency: str = Field(default="INR", min_length=3, max_length=3)
@@ -330,16 +372,102 @@ def score_and_decide(
     Decision Engine, and persist the complete decision flow to Supabase.
     """
 
-    # ---------------------------------------------------------------
-    # 1. ML scoring
+       # ---------------------------------------------------------------
+    # 1. Customer profile enrichment + ML scoring
     # ---------------------------------------------------------------
 
+    customer_profile = CUSTOMER_PROFILES.get(request.customer_id)
+
+    if customer_profile is None:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown customer_id: {request.customer_id}",
+        )
+
     try:
+        enriched_risk_features = dict(request.risk_features)
+
+        enriched_risk_features.update(
+            {
+                "amount_to_customer_avg_ratio": (
+                    request.amount
+                    / float(
+                        customer_profile[
+                            "avg_transaction_amount_customer"
+                        ]
+                    )
+                ),
+                "is_new_customer": (
+                    customer_profile["archetype"] == "new_customer"
+                ),
+                "customer_past_success_rate": float(
+                    customer_profile["customer_past_success_rate"]
+                ),
+                "customer_past_recovery_rate": float(
+                    customer_profile["customer_past_recovery_rate"]
+                ),
+                "nudge_ignore_tendency": float(
+                    customer_profile["nudge_ignore_tendency"]
+                ),
+                "chargeback_history_count": int(
+                    float(
+                        customer_profile[
+                            "chargeback_history_count"
+                        ]
+                    )
+                ),
+            }
+        )
+
+        enriched_recovery_features = None
+
+        if request.payment_failed:
+            enriched_recovery_features = dict(
+                request.recovery_features or {}
+            )
+
+            enriched_recovery_features.update(
+                {
+                    "amount_to_customer_avg_ratio": (
+                        request.amount
+                        / float(
+                            customer_profile[
+                                "avg_transaction_amount_customer"
+                            ]
+                        )
+                    ),
+                    "is_new_customer": (
+                        customer_profile["archetype"] == "new_customer"
+                    ),
+                    "customer_past_success_rate": float(
+                        customer_profile["customer_past_success_rate"]
+                    ),
+                    "customer_past_recovery_rate": float(
+                        customer_profile["customer_past_recovery_rate"]
+                    ),
+                    "nudge_ignore_tendency": float(
+                        customer_profile["nudge_ignore_tendency"]
+                    ),
+                }
+            )
+
         scores = score_transaction(
-            risk_features=request.risk_features,
-            recovery_features=request.recovery_features,
+            risk_features=enriched_risk_features,
+            recovery_features=enriched_recovery_features,
             payment_failed=request.payment_failed,
         )
+
+    except (ValueError, FileNotFoundError, KeyError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="ML scoring failed unexpectedly.",
+        ) from exc
     except (ValueError, FileNotFoundError) as exc:
         raise HTTPException(
             status_code=400,

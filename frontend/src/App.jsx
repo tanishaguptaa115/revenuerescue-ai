@@ -4,6 +4,7 @@ import "./App.css";
 const MERCHANT_ID = "985d35c9-fdbb-4d2a-b974-a71c72b86fae";
 
 const initialForm = {
+  customerId: "cust_000000",
   amount: 1061.65,
   paymentMethod: "UPI",
   failureReason: "insufficient_funds",
@@ -13,16 +14,10 @@ const initialForm = {
   numPaymentMethodsUsedRecently: 1,
   ipCountryMismatch: false,
   deviceChangeFlag: false,
-  isNewCustomer: false,
+
   velocityTxnCount1h: 1,
   velocityTxnCount24h: 2,
   daysSinceLastSuccessfulPayment: 5,
-  hasPriorSuccess: 1,
-  chargebackHistoryCount: 0,
-
-  customerPastSuccessRate: 0.82,
-  customerPastRecoveryRate: 0.55,
-  nudgeIgnoreTendency: 0.18,
 };
 
 function App() {
@@ -43,11 +38,16 @@ function App() {
     setError("");
     setResult(null);
 
-    const customerAverage = Math.max(form.amount, 1000);
-    const ratio = Number(form.amount) / customerAverage;
+    const daysSinceSuccess = Number(
+      form.daysSinceLastSuccessfulPayment
+    );
+
+    const hasPriorSuccess =
+      Number.isFinite(daysSinceSuccess) && daysSinceSuccess >= 0;
 
     const payload = {
       merchant_id: MERCHANT_ID,
+      customer_id: form.customerId.trim(),
       amount: Number(form.amount),
       currency: "INR",
       payment_method: form.paymentMethod,
@@ -58,51 +58,60 @@ function App() {
 
       risk_features: {
         amount: Number(form.amount),
-        amount_to_customer_avg_ratio: ratio,
         payment_method: form.paymentMethod,
+
         num_payment_methods_used_recently:
           Number(form.numPaymentMethodsUsedRecently),
+
         ip_country_mismatch: form.ipCountryMismatch,
         device_change_flag: form.deviceChangeFlag,
-        is_new_customer: form.isNewCustomer,
-        velocity_txn_count_1h: Number(form.velocityTxnCount1h),
-        velocity_txn_count_24h: Number(form.velocityTxnCount24h),
+
+        velocity_txn_count_1h:
+          Number(form.velocityTxnCount1h),
+
+        velocity_txn_count_24h:
+          Number(form.velocityTxnCount24h),
+
         days_since_last_successful_payment:
-          Number(form.daysSinceLastSuccessfulPayment),
-        has_prior_success: Number(form.hasPriorSuccess),
-        chargeback_history_count: Number(form.chargebackHistoryCount),
+          daysSinceSuccess,
+
+        has_prior_success: hasPriorSuccess,
       },
 
       recovery_features: {
         amount: Number(form.amount),
-        amount_to_customer_avg_ratio: ratio,
         payment_method: form.paymentMethod,
         failure_reason_code: form.failureReason,
         is_soft_failure: form.isSoftFailure,
-        retry_count_so_far: Number(form.retryCount),
+
+        retry_count_so_far:
+          Number(form.retryCount),
+
         days_since_last_successful_payment:
-          Number(form.daysSinceLastSuccessfulPayment),
-        has_prior_success: Number(form.hasPriorSuccess),
-        is_new_customer: form.isNewCustomer,
-        customer_past_success_rate: Number(form.customerPastSuccessRate),
-        customer_past_recovery_rate: Number(form.customerPastRecoveryRate),
-        nudge_ignore_tendency: Number(form.nudgeIgnoreTendency),
+          daysSinceSuccess,
+
+        has_prior_success: hasPriorSuccess,
       },
     };
 
     try {
-      const response = await fetch("http://127.0.0.1:8000/score-and-decide", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
+      const response = await fetch(
+        "http://127.0.0.1:8000/score-and-decide",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.detail || "Request failed");
+        throw new Error(
+          data.detail || "Request failed"
+        );
       }
 
       setResult(data);
@@ -119,15 +128,27 @@ function App() {
   const decisionClass =
     result?.action?.toLowerCase() || "";
 
+  const riskPercent = result
+    ? (result.risk_score * 100).toFixed(1)
+    : "0.0";
+
+  const recoveryPercent = result
+    ? (result.recovery_score * 100).toFixed(1)
+    : "0.0";
+
   return (
     <div className="app-shell">
       <header className="topbar">
         <div>
           <div className="brand">
             <span className="brand-mark">R</span>
+
             <div>
               <h1>RevenueRescue AI</h1>
-              <p>Autonomous payment recovery & risk intelligence</p>
+              <p>
+                Autonomous payment recovery & risk
+                intelligence
+              </p>
             </div>
           </div>
         </div>
@@ -140,45 +161,89 @@ function App() {
 
       <main className="dashboard">
         <section className="hero-copy">
-          <span className="eyebrow">MERCHANT CONTROL CENTER</span>
-          <h2>Stop revenue leakage before it becomes lost revenue.</h2>
+          <span className="eyebrow">
+            MERCHANT CONTROL CENTER
+          </span>
+
+          <h2>
+            Stop revenue leakage before it becomes lost
+            revenue.
+          </h2>
+
           <p>
-            Analyze a failed payment with the trained Risk and Recovery
-            models, apply merchant policy, and generate an auditable action.
+            Analyze a failed payment with the trained Risk
+            and Recovery models, apply merchant policy, and
+            generate an auditable action.
           </p>
         </section>
 
         <section className="main-grid">
+          {/* -------------------------------------------------
+              INPUT CARD
+          -------------------------------------------------- */}
           <div className="card input-card">
             <div className="card-heading">
               <div>
                 <span className="step">01</span>
                 <h3>Transaction Signals</h3>
               </div>
-              <span className="small-label">INPUT</span>
+
+              <span className="small-label">
+                INPUT
+              </span>
             </div>
 
             <div className="form-grid">
+              {/* Customer */}
+              <label>
+                Customer ID
+
+                <input
+                  type="text"
+                  value={form.customerId}
+                  onChange={(e) =>
+                    update(
+                      "customerId",
+                      e.target.value
+                    )
+                  }
+                  placeholder="e.g. cust_000000"
+                />
+              </label>
+
+              {/* Amount */}
               <label>
                 Amount
+
                 <div className="input-wrap">
                   <span>₹</span>
+
                   <input
                     type="number"
+                    min="1"
+                    step="0.01"
                     value={form.amount}
                     onChange={(e) =>
-                      update("amount", e.target.value)
+                      update(
+                        "amount",
+                        e.target.value
+                      )
                     }
                   />
                 </div>
               </label>
 
+              {/* Payment method */}
               <label>
                 Payment Method
+
                 <select
                   value={form.paymentMethod}
                   onChange={(e) =>
-                    update("paymentMethod", e.target.value)
+                    update(
+                      "paymentMethod",
+                      e.target.value
+                    )
                   }
                 >
                   <option>UPI</option>
@@ -188,71 +253,98 @@ function App() {
                 </select>
               </label>
 
+              {/* Failure reason */}
               <label>
                 Failure Reason
+
                 <select
                   value={form.failureReason}
                   onChange={(e) =>
-                    update("failureReason", e.target.value)
+                    update(
+                      "failureReason",
+                      e.target.value
+                    )
                   }
                 >
                   <option value="insufficient_funds">
                     Insufficient Funds
                   </option>
+
                   <option value="issuer_declined">
                     Issuer Declined
                   </option>
+
                   <option value="network_error">
                     Network Error
                   </option>
+
                   <option value="authentication_failed">
                     Authentication Failed
                   </option>
                 </select>
               </label>
 
+              {/* Retry count */}
               <label>
                 Retry Count
+
                 <input
                   type="number"
                   min="0"
                   value={form.retryCount}
                   onChange={(e) =>
-                    update("retryCount", e.target.value)
+                    update(
+                      "retryCount",
+                      e.target.value
+                    )
                   }
                 />
               </label>
 
+              {/* Velocity 1h */}
               <label>
                 Velocity · 1h
+
                 <input
                   type="number"
                   min="0"
                   value={form.velocityTxnCount1h}
                   onChange={(e) =>
-                    update("velocityTxnCount1h", e.target.value)
+                    update(
+                      "velocityTxnCount1h",
+                      e.target.value
+                    )
                   }
                 />
               </label>
 
+              {/* Velocity 24h */}
               <label>
                 Velocity · 24h
+
                 <input
                   type="number"
                   min="0"
                   value={form.velocityTxnCount24h}
                   onChange={(e) =>
-                    update("velocityTxnCount24h", e.target.value)
+                    update(
+                      "velocityTxnCount24h",
+                      e.target.value
+                    )
                   }
                 />
               </label>
 
+              {/* Recent payment methods */}
               <label>
                 Recent Payment Methods
+
                 <input
                   type="number"
                   min="0"
-                  value={form.numPaymentMethodsUsedRecently}
+                  value={
+                    form.numPaymentMethodsUsedRecently
+                  }
                   onChange={(e) =>
                     update(
                       "numPaymentMethodsUsedRecently",
@@ -262,12 +354,16 @@ function App() {
                 />
               </label>
 
+              {/* Days since success */}
               <label>
                 Days Since Last Success
+
                 <input
                   type="number"
                   min="0"
-                  value={form.daysSinceLastSuccessfulPayment}
+                  value={
+                    form.daysSinceLastSuccessfulPayment
+                  }
                   onChange={(e) =>
                     update(
                       "daysSinceLastSuccessfulPayment",
@@ -278,119 +374,74 @@ function App() {
               </label>
             </div>
 
-            <div className="toggle-row">
-              <label className="toggle">
+            {/* Toggle signals */}
+            <div className="toggle-grid">
+              <label className="toggle-card">
                 <input
                   type="checkbox"
                   checked={form.isSoftFailure}
                   onChange={(e) =>
-                    update("isSoftFailure", e.target.checked)
+                    update(
+                      "isSoftFailure",
+                      e.target.checked
+                    )
                   }
                 />
-                <span></span>
-                Soft Failure
+
+                <span>
+                  <strong>Soft Failure</strong>
+                  <small>
+                    Eligible for recovery attempt
+                  </small>
+                </span>
               </label>
 
-              <label className="toggle">
-                <input
-                  type="checkbox"
-                  checked={form.isNewCustomer}
-                  onChange={(e) =>
-                    update("isNewCustomer", e.target.checked)
-                  }
-                />
-                <span></span>
-                New Customer
-              </label>
-
-              <label className="toggle">
+              <label className="toggle-card">
                 <input
                   type="checkbox"
                   checked={form.ipCountryMismatch}
                   onChange={(e) =>
-                    update("ipCountryMismatch", e.target.checked)
+                    update(
+                      "ipCountryMismatch",
+                      e.target.checked
+                    )
                   }
                 />
-                <span></span>
-                Country Mismatch
+
+                <span>
+                  <strong>Country Mismatch</strong>
+                  <small>
+                    IP country differs from profile
+                  </small>
+                </span>
               </label>
 
-              <label className="toggle">
+              <label className="toggle-card">
                 <input
                   type="checkbox"
                   checked={form.deviceChangeFlag}
                   onChange={(e) =>
-                    update("deviceChangeFlag", e.target.checked)
+                    update(
+                      "deviceChangeFlag",
+                      e.target.checked
+                    )
                   }
                 />
-                <span></span>
-                Device Changed
+
+                <span>
+                  <strong>Device Changed</strong>
+                  <small>
+                    Recent device change signal
+                  </small>
+                </span>
               </label>
             </div>
 
-            <div className="advanced-grid">
-              <label>
-                Customer Success Rate
-                <input
-                  type="number"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={form.customerPastSuccessRate}
-                  onChange={(e) =>
-                    update(
-                      "customerPastSuccessRate",
-                      e.target.value
-                    )
-                  }
-                />
-              </label>
-
-              <label>
-                Customer Recovery Rate
-                <input
-                  type="number"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={form.customerPastRecoveryRate}
-                  onChange={(e) =>
-                    update(
-                      "customerPastRecoveryRate",
-                      e.target.value
-                    )
-                  }
-                />
-              </label>
-
-              <label>
-                Nudge Ignore Tendency
-                <input
-                  type="number"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={form.nudgeIgnoreTendency}
-                  onChange={(e) =>
-                    update("nudgeIgnoreTendency", e.target.value)
-                  }
-                />
-              </label>
-
-              <label>
-                Chargeback History
-                <input
-                  type="number"
-                  min="0"
-                  value={form.chargebackHistoryCount}
-                  onChange={(e) =>
-                    update(
-                      "chargebackHistoryCount",
-                      e.target.value
-                    )
-                  }
-                />
-              </label>
+            <div className="customer-note">
+              <strong>Customer intelligence:</strong>{" "}
+              historical customer behavior is loaded
+              automatically by the backend from the
+              customer profile associated with this ID.
             </div>
 
             <button
@@ -398,34 +449,53 @@ function App() {
               onClick={analyzeTransaction}
               disabled={loading}
             >
-              {loading ? "Analyzing..." : "Analyze Transaction"}
+              {loading
+                ? "Analyzing..."
+                : "Analyze Transaction"}
+
               <span>→</span>
             </button>
 
-            {error && <div className="error-box">{error}</div>}
+            {error && (
+              <div className="error-box">
+                {error}
+              </div>
+            )}
           </div>
 
+          {/* -------------------------------------------------
+              RESULT CARD
+          -------------------------------------------------- */}
           <div className="card result-card">
             <div className="card-heading">
               <div>
                 <span className="step">02</span>
                 <h3>AI Decision</h3>
               </div>
-              <span className="small-label">LIVE</span>
+
+              <span className="small-label">
+                LIVE
+              </span>
             </div>
 
             {!result ? (
               <div className="empty-state">
                 <div className="empty-icon">✦</div>
+
                 <h4>Ready for analysis</h4>
+
                 <p>
-                  Submit a transaction to run the trained Risk,
-                  Recovery, and Decision Engine pipeline.
+                  Submit a transaction to run the
+                  trained Risk, Recovery, and Decision
+                  Engine pipeline.
                 </p>
               </div>
             ) : (
               <>
-                <div className={`decision-banner ${decisionClass}`}>
+                {/* Decision */}
+                <div
+                  className={`decision-banner ${decisionClass}`}
+                >
                   <div className="decision-icon">
                     {result.action === "RECOVER"
                       ? "↗"
@@ -435,127 +505,174 @@ function App() {
                       ? "?"
                       : "✓"}
                   </div>
+
                   <div>
-                    <span>RECOMMENDED ACTION</span>
-                    <strong>{result.action}</strong>
+                    <span>
+                      RECOMMENDED ACTION
+                    </span>
+
+                    <strong>
+                      {result.action}
+                    </strong>
                   </div>
                 </div>
 
-                <div className="score-grid">
-                  <div className="score-box">
+                {/* Model scores */}
+                <div className="metric-grid">
+                  <div className="metric-card">
                     <span>Risk Score</span>
                     <strong>
-                      {(result.risk_score * 100).toFixed(1)}%
+                      {riskPercent}%
                     </strong>
-                    <div className="meter">
-                      <div
-                        style={{
-                          width: `${result.risk_score * 100}%`,
-                        }}
-                      ></div>
-                    </div>
                   </div>
 
-                  <div className="score-box">
+                  <div className="metric-card">
                     <span>Recovery Probability</span>
                     <strong>
-                      {result.recovery_score == null
-                        ? "—"
-                        : `${(
-                            result.recovery_score * 100
-                          ).toFixed(1)}%`}
+                      {recoveryPercent}%
                     </strong>
-                    <div className="meter recovery">
-                      <div
-                        style={{
-                          width: `${
-                            (result.recovery_score || 0) * 100
-                          }%`,
-                        }}
-                      ></div>
+                  </div>
+                </div>
+
+                {/* Reason */}
+                <div className="reason-box">
+                  <span>WHY THIS DECISION</span>
+
+                  <strong>
+                    {result.human_readable_reason}
+                  </strong>
+
+                  <small>
+                    Reason code:{" "}
+                    {result.reason_code}
+                  </small>
+                </div>
+
+                {/* Policy */}
+                {result.metadata?.merchant_policy && (
+                  <div className="policy-box">
+                    <div className="policy-header">
+                      <span>
+                        MERCHANT POLICY
+                      </span>
+
+                      <strong>
+                        {result.metadata
+                          .merchant_policy
+                          .risk_tolerance_label
+                          ?.toUpperCase()}
+                      </strong>
+                    </div>
+
+                    <div className="policy-grid">
+                      <div>
+                        <span>
+                          Risk tolerance
+                        </span>
+
+                        <strong>
+                          {(
+                            result.merchant_risk_tolerance *
+                            100
+                          ).toFixed(0)}
+                          %
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span>
+                          Recovery threshold
+                        </span>
+
+                        <strong>
+                          {(
+                            result.metadata
+                              .recovery_score_threshold *
+                            100
+                          ).toFixed(0)}
+                          %
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span>
+                          Max auto retries
+                        </span>
+
+                        <strong>
+                          {
+                            result.metadata
+                              .merchant_policy
+                              .max_auto_retries
+                          }
+                        </strong>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
-                <div className="reason-box">
-                  <span>WHY?</span>
-                  <p>{result.human_readable_reason}</p>
-                </div>
+                {/* Persistence */}
+                {result.metadata?.persistence && (
+                  <div className="audit-box">
+                    <div className="audit-header">
+                      <span>
+                        AUDIT & PERSISTENCE
+                      </span>
 
-                <div className="policy-box">
-                  <div>
-                    <span>Merchant Risk Tolerance</span>
-                    <strong>
-                      {(
-                        result.merchant_risk_tolerance * 100
-                      ).toFixed(0)}
-                      %
-                    </strong>
+                      <span className="audit-status">
+                        ● SAVED
+                      </span>
+                    </div>
+
+                    <div className="audit-row">
+                      <span>Transaction</span>
+
+                      <code>
+                        {
+                          result.metadata.persistence
+                            .transaction_id
+                        }
+                      </code>
+                    </div>
+
+                    <div className="audit-row">
+                      <span>Payment Attempt</span>
+
+                      <code>
+                        {
+                          result.metadata.persistence
+                            .payment_attempt_id
+                        }
+                      </code>
+                    </div>
+
+                    <div className="audit-row">
+                      <span>Decision</span>
+
+                      <code>
+                        {
+                          result.metadata.persistence
+                            .decision_id
+                        }
+                      </code>
+                    </div>
+
+                    <div className="audit-row">
+                      <span>Audit Event</span>
+
+                      <code>
+                        {
+                          result.metadata.persistence
+                            .audit_event_id
+                        }
+                      </code>
+                    </div>
                   </div>
-                  <div>
-                    <span>Decision Priority</span>
-                    <strong>{result.priority}</strong>
-                  </div>
-                  <div>
-                    <span>Reason Code</span>
-                    <strong>{result.reason_code}</strong>
-                  </div>
-                </div>
+                )}
               </>
             )}
           </div>
         </section>
-
-        {result && (
-          <section className="card audit-card">
-            <div className="card-heading">
-              <div>
-                <span className="step">03</span>
-                <h3>Audit Trail</h3>
-              </div>
-              <span className="small-label">SUPABASE</span>
-            </div>
-
-            <div className="audit-grid">
-              <div>
-                <span>Transaction</span>
-                <strong>✓ Persisted</strong>
-                <small>
-                  {result.metadata?.persistence?.transaction_id}
-                </small>
-              </div>
-
-              <div>
-                <span>Payment Attempt</span>
-                <strong>✓ Persisted</strong>
-                <small>
-                  {result.metadata?.persistence?.payment_attempt_id}
-                </small>
-              </div>
-
-              <div>
-                <span>Agent Decision</span>
-                <strong>✓ Persisted</strong>
-                <small>
-                  {result.metadata?.persistence?.decision_id}
-                </small>
-              </div>
-
-              <div>
-                <span>Audit Event</span>
-                <strong>✓ Persisted</strong>
-                <small>
-                  {result.metadata?.persistence?.audit_event_id}
-                </small>
-              </div>
-            </div>
-          </section>
-        )}
-
-        <footer>
-          <span>RevenueRescue AI</span>
-          <span>ML · Policy · Decisioning · Audit</span>
-        </footer>
       </main>
     </div>
   );

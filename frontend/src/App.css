@@ -586,3 +586,297 @@ footer {
     gap: 8px;
   }
 }
+/* =========================================================
+   RevenueRescue AI - New Dashboard Components
+   ========================================================= */
+
+.toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.toggle-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 76px;
+  padding: 14px 16px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.72);
+  cursor: pointer;
+  box-sizing: border-box;
+}
+
+.toggle-card:hover {
+  border-color: rgba(96, 165, 250, 0.35);
+  background: rgba(20, 35, 60, 0.8);
+}
+
+.toggle-card input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  flex: 0 0 auto;
+  accent-color: #38bdf8;
+  cursor: pointer;
+}
+
+.toggle-card span {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.toggle-card strong {
+  font-size: 13px;
+  line-height: 1.2;
+  color: #f8fafc;
+}
+
+.toggle-card small {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #94a3b8;
+}
+
+.customer-note {
+  margin-top: 16px;
+  padding: 13px 15px;
+  border-radius: 12px;
+  border: 1px solid rgba(56, 189, 248, 0.14);
+  background: rgba(14, 165, 233, 0.06);
+  color: #94a3b8;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.customer-note strong {
+  color: #cbd5e1;
+}
+
+/* -------------------------
+   AI score cards
+   ------------------------- */
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.metric-card {
+  padding: 17px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(15, 23, 42, 0.68);
+  box-sizing: border-box;
+}
+
+.metric-card span {
+  display: block;
+  margin-bottom: 8px;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.metric-card strong {
+  display: block;
+  color: #f8fafc;
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+/* -------------------------
+   Decision explanation
+   ------------------------- */
+
+.reason-box {
+  margin-top: 14px;
+  padding: 17px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.13);
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.reason-box > span {
+  display: block;
+  margin-bottom: 9px;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.reason-box > strong {
+  display: block;
+  color: #f8fafc;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.reason-box > small {
+  display: block;
+  margin-top: 10px;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+/* -------------------------
+   Merchant policy
+   ------------------------- */
+
+.policy-box {
+  margin-top: 14px;
+  padding: 17px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.13);
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.policy-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+
+.policy-header span {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.policy-header strong {
+  color: #f8fafc;
+  font-size: 12px;
+}
+
+.policy-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.policy-grid > div {
+  min-width: 0;
+}
+
+.policy-grid span {
+  display: block;
+  margin-bottom: 6px;
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.3;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.policy-grid strong {
+  display: block;
+  color: #e2e8f0;
+  font-size: 15px;
+}
+
+/* -------------------------
+   Audit / Supabase persistence
+   ------------------------- */
+
+.audit-box {
+  margin-top: 14px;
+  padding: 17px 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(34, 197, 94, 0.16);
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.audit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 13px;
+}
+
+.audit-header > span:first-child {
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+}
+
+.audit-status {
+  color: #4ade80;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.audit-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.audit-row span {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.audit-row code {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: #cbd5e1;
+  font-family: "Courier New", monospace;
+  font-size: 10px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* -------------------------
+   Responsive layout
+   ------------------------- */
+
+@media (max-width: 900px) {
+  .toggle-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .policy-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .audit-row {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .audit-row code {
+    white-space: normal;
+    word-break: break-all;
+  }
+}
