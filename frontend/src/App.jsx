@@ -10,27 +10,196 @@ const initialForm = {
   failureReason: "insufficient_funds",
   retryCount: 1,
   isSoftFailure: true,
-
   numPaymentMethodsUsedRecently: 1,
   ipCountryMismatch: false,
   deviceChangeFlag: false,
-
   velocityTxnCount1h: 1,
   velocityTxnCount24h: 2,
   daysSinceLastSuccessfulPayment: 5,
 };
+
+const scenarios = {
+  safe: {
+    label: "Safe Recovery",
+    description: "Low risk, recoverable failure",
+    values: {
+      customerId: "cust_000010",
+      amount: 850,
+      paymentMethod: "UPI",
+      failureReason: "insufficient_funds",
+      retryCount: 1,
+      isSoftFailure: true,
+      numPaymentMethodsUsedRecently: 1,
+      ipCountryMismatch: false,
+      deviceChangeFlag: false,
+      velocityTxnCount1h: 1,
+      velocityTxnCount24h: 2,
+      daysSinceLastSuccessfulPayment: 3,
+    },
+  },
+
+  highRisk: {
+    label: "High Risk",
+    description: "Verified high-risk transaction",
+    values: {
+      customerId: "cust_002147",
+      amount: 9008.91,
+      paymentMethod: "UPI",
+      failureReason: "issuer_declined",
+      retryCount: 0,
+      isSoftFailure: false,
+      numPaymentMethodsUsedRecently: 2,
+      ipCountryMismatch: true,
+      deviceChangeFlag: true,
+      velocityTxnCount1h: 1,
+      velocityTxnCount24h: 1,
+      daysSinceLastSuccessfulPayment: "",
+    },
+  },
+
+  fatigue: {
+    label: "Retry Fatigue",
+    description: "Recovery blocked after repeated retries",
+    values: {
+      customerId: "cust_000200",
+      amount: 1250,
+      paymentMethod: "UPI",
+      failureReason: "insufficient_funds",
+      retryCount: 3,
+      isSoftFailure: true,
+      numPaymentMethodsUsedRecently: 2,
+      ipCountryMismatch: false,
+      deviceChangeFlag: false,
+      velocityTxnCount1h: 1,
+      velocityTxnCount24h: 4,
+      daysSinceLastSuccessfulPayment: 8,
+    },
+  },
+
+  suspicious: {
+    label: "Suspicious",
+    description: "Verified fraudulent transaction",
+    values: {
+      customerId: "cust_002693",
+      amount: 522.91,
+      paymentMethod: "Wallet",
+      failureReason: "card_declined_issuer",
+      retryCount: 0,
+      isSoftFailure: false,
+      numPaymentMethodsUsedRecently: 2,
+      ipCountryMismatch: true,
+      deviceChangeFlag: true,
+      velocityTxnCount1h: 0,
+      velocityTxnCount24h: 0,
+      daysSinceLastSuccessfulPayment: "",
+    },
+  },
+};
+
+function getDecisionExplanation(result) {
+  if (!result) return null;
+
+  const policy = result.metadata?.merchant_policy;
+  const risk = Number(result.risk_score ?? 0);
+  const recovery = Number(result.recovery_score ?? 0);
+  const riskTolerance = Number(
+    result.merchant_risk_tolerance ?? 0
+  );
+  const recoveryThreshold = Number(
+    result.metadata?.recovery_score_threshold ?? 0
+  );
+  const retryCount = Number(
+    result.metadata?.retry_count_so_far ?? 0
+  ); if (
+    policy &&
+    retryCount >= Number(policy.max_auto_retries)
+  ) {
+    return `This payment has already reached the merchant's maximum automated retry limit of ${policy.max_auto_retries}. Further recovery attempts are suppressed to avoid repeated payment attempts.`;
+  }
+
+  switch (result.reason_code) {
+    case "LOW_RECOVERY_PROBABILITY":
+      return `Recovery probability is ${(recovery * 100).toFixed(
+        1
+      )}%, below the ${(
+        recoveryThreshold * 100
+      ).toFixed(
+        0
+      )}% merchant auto-recovery threshold. Risk remains below the ${(
+        riskTolerance * 100
+      ).toFixed(0)}% review threshold, so no automated recovery is attempted.`;
+
+    case "MAX_RETRIES_REACHED":
+      return `Automated recovery is suppressed because the transaction has already reached ${retryCount} retries, reducing the risk of repeated payment attempts.`;
+
+    case "HIGH_RISK_REVIEW":
+      return `Risk is ${(risk * 100).toFixed(
+        1
+      )}%, at or above the merchant's ${(
+        riskTolerance * 100
+      ).toFixed(0)}% review threshold, so the transaction is routed for review.`;
+
+    case "HIGH_RISK_BLOCK":
+      return `Risk is ${(risk * 100).toFixed(
+        1
+      )}%, exceeding the merchant's automated safety boundary. The transaction is blocked to protect the merchant.`;
+
+    case "RECOVERY_RECOMMENDED":
+      return `Recovery probability is ${(recovery * 100).toFixed(
+        1
+      )}%, above the ${(
+        recoveryThreshold * 100
+      ).toFixed(
+        0
+      )}% merchant threshold, while risk remains within the merchant's allowed range. Automated recovery is recommended.`;
+
+    case "HARD_FAILURE_NO_RECOVERY":
+      return `This payment failure is classified as a hard failure, so automated recovery is intentionally skipped.`;
+
+    default:
+      return result.human_readable_reason;
+  }
+}
 
 function App() {
   const [form, setForm] = useState(initialForm);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+  const [copied, setCopied] = useState("");
 
   const update = (key, value) => {
     setForm((prev) => ({
       ...prev,
       [key]: value,
     }));
+  };
+
+  const applyScenario = (scenarioKey) => {
+    setForm(scenarios[scenarioKey].values);
+    setResult(null);
+    setError("");
+    setCopied("");
+  };
+
+  const resetDemo = () => {
+    setForm(initialForm);
+    setResult(null);
+    setError("");
+    setCopied("");
+  };
+
+  const copyValue = async (value, label) => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(label);
+
+      setTimeout(() => {
+        setCopied("");
+      }, 1600);
+    } catch {
+      setError("Unable to copy this ID.");
+    }
   };
 
   const analyzeTransaction = async () => {
@@ -43,7 +212,8 @@ function App() {
     );
 
     const hasPriorSuccess =
-      Number.isFinite(daysSinceSuccess) && daysSinceSuccess >= 0;
+      Number.isFinite(daysSinceSuccess) &&
+      daysSinceSuccess >= 0;
 
     const payload = {
       merchant_id: MERCHANT_ID,
@@ -59,22 +229,16 @@ function App() {
       risk_features: {
         amount: Number(form.amount),
         payment_method: form.paymentMethod,
-
         num_payment_methods_used_recently:
           Number(form.numPaymentMethodsUsedRecently),
-
         ip_country_mismatch: form.ipCountryMismatch,
         device_change_flag: form.deviceChangeFlag,
-
         velocity_txn_count_1h:
           Number(form.velocityTxnCount1h),
-
         velocity_txn_count_24h:
           Number(form.velocityTxnCount24h),
-
         days_since_last_successful_payment:
           daysSinceSuccess,
-
         has_prior_success: hasPriorSuccess,
       },
 
@@ -83,13 +247,10 @@ function App() {
         payment_method: form.paymentMethod,
         failure_reason_code: form.failureReason,
         is_soft_failure: form.isSoftFailure,
-
         retry_count_so_far:
           Number(form.retryCount),
-
         days_since_last_successful_payment:
           daysSinceSuccess,
-
         has_prior_success: hasPriorSuccess,
       },
     };
@@ -118,69 +279,164 @@ function App() {
     } catch (err) {
       setError(
         err.message ||
-          "Unable to connect to the RevenueRescue API."
+        "Unable to connect to the RevenueRescue API."
       );
     } finally {
       setLoading(false);
     }
   };
 
+  const riskPercent = result
+    ? Number(result.risk_score * 100).toFixed(1)
+    : "—";
+
+  const recoveryPercent = result
+    ? Number(result.recovery_score * 100).toFixed(1)
+    : "—";
+
+  const riskWidth = result
+    ? Math.min(result.risk_score * 100, 100)
+    : 0;
+
+  const recoveryWidth = result
+    ? Math.min(result.recovery_score * 100, 100)
+    : 0;
+
   const decisionClass =
     result?.action?.toLowerCase() || "";
 
-  const riskPercent = result
-    ? (result.risk_score * 100).toFixed(1)
-    : "0.0";
+  const policy = result?.metadata?.merchant_policy;
+  const persistence = result?.metadata?.persistence;
 
-  const recoveryPercent = result
-    ? (result.recovery_score * 100).toFixed(1)
-    : "0.0";
+  const decisionExplanation =
+    getDecisionExplanation(result);
 
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div>
-          <div className="brand">
-            <span className="brand-mark">R</span>
+        <div className="brand">
+          <span className="brand-mark">R</span>
 
-            <div>
-              <h1>RevenueRescue AI</h1>
-              <p>
-                Autonomous payment recovery & risk
-                intelligence
-              </p>
-            </div>
+          <div>
+            <h1>RevenueRescue AI</h1>
+            <p>
+              Autonomous payment recovery & risk intelligence
+            </p>
           </div>
         </div>
 
-        <div className="status-pill">
-          <span className="status-dot"></span>
-          AI Engine Online
+        <div className="topbar-right">
+          <div className="engine-status">
+            <span className="status-dot"></span>
+            AI Engine Online
+          </div>
+
+          <div className="api-label">
+            FASTAPI · SUPABASE · ML
+          </div>
         </div>
       </header>
 
       <main className="dashboard">
         <section className="hero-copy">
-          <span className="eyebrow">
-            MERCHANT CONTROL CENTER
-          </span>
+          <div className="hero-topline">
+            <span className="eyebrow">
+              MERCHANT CONTROL CENTER
+            </span>
+
+            <button
+              className="reset-btn"
+              onClick={resetDemo}
+              type="button"
+            >
+              ↻ Reset Demo
+            </button>
+          </div>
 
           <h2>
-            Stop revenue leakage before it becomes lost
-            revenue.
+            Recover revenue without{" "}
+            <span>ignoring risk.</span>
           </h2>
 
           <p>
-            Analyze a failed payment with the trained Risk
-            and Recovery models, apply merchant policy, and
-            generate an auditable action.
+            RevenueRescue AI combines customer context,
+            trained ML models, and merchant policy to decide
+            what should happen after a payment failure.
           </p>
         </section>
 
+        <section className="kpi-strip">
+          <div className="kpi-card">
+            <span>RISK MODEL</span>
+            <strong>
+              {result ? `${riskPercent}%` : "—"}
+            </strong>
+            <small>fraud probability</small>
+          </div>
+
+          <div className="kpi-card">
+            <span>RECOVERY MODEL</span>
+            <strong>
+              {result ? `${recoveryPercent}%` : "—"}
+            </strong>
+            <small>recovery probability</small>
+          </div>
+
+          <div className="kpi-card">
+            <span>DECISION</span>
+            <strong className={decisionClass}>
+              {result?.action || "READY"}
+            </strong>
+            <small>
+              {result
+                ? "policy-aware outcome"
+                : "awaiting analysis"}
+            </small>
+          </div>
+
+          <div className="kpi-card">
+            <span>CUSTOMER</span>
+            <strong className="customer-kpi">
+              {form.customerId}
+            </strong>
+            <small>profile-backed context</small>
+          </div>
+        </section>
+
+        <section className="scenario-section">
+          <div className="section-label-row">
+            <div>
+              <span className="section-kicker">
+                DEMO SCENARIOS
+              </span>
+              <h3>
+                Show the decision engine in action
+              </h3>
+            </div>
+
+            <span className="section-help">
+              One click changes transaction signals
+            </span>
+          </div>
+
+          <div className="scenario-grid">
+            {Object.entries(scenarios).map(
+              ([key, scenario]) => (
+                <button
+                  key={key}
+                  className="scenario-card"
+                  type="button"
+                  onClick={() => applyScenario(key)}
+                >
+                  <strong>{scenario.label}</strong>
+                  <span>{scenario.description}</span>
+                </button>
+              )
+            )}
+          </div>
+        </section>
+
         <section className="main-grid">
-          {/* -------------------------------------------------
-              INPUT CARD
-          -------------------------------------------------- */}
           <div className="card input-card">
             <div className="card-heading">
               <div>
@@ -194,7 +450,6 @@ function App() {
             </div>
 
             <div className="form-grid">
-              {/* Customer */}
               <label>
                 Customer ID
 
@@ -207,11 +462,10 @@ function App() {
                       e.target.value
                     )
                   }
-                  placeholder="e.g. cust_000000"
+                  placeholder="cust_000000"
                 />
               </label>
 
-              {/* Amount */}
               <label>
                 Amount
 
@@ -233,7 +487,6 @@ function App() {
                 </div>
               </label>
 
-              {/* Payment method */}
               <label>
                 Payment Method
 
@@ -253,7 +506,6 @@ function App() {
                 </select>
               </label>
 
-              {/* Failure reason */}
               <label>
                 Failure Reason
 
@@ -284,7 +536,6 @@ function App() {
                 </select>
               </label>
 
-              {/* Retry count */}
               <label>
                 Retry Count
 
@@ -301,7 +552,6 @@ function App() {
                 />
               </label>
 
-              {/* Velocity 1h */}
               <label>
                 Velocity · 1h
 
@@ -318,7 +568,6 @@ function App() {
                 />
               </label>
 
-              {/* Velocity 24h */}
               <label>
                 Velocity · 24h
 
@@ -335,7 +584,6 @@ function App() {
                 />
               </label>
 
-              {/* Recent payment methods */}
               <label>
                 Recent Payment Methods
 
@@ -354,7 +602,6 @@ function App() {
                 />
               </label>
 
-              {/* Days since success */}
               <label>
                 Days Since Last Success
 
@@ -374,9 +621,8 @@ function App() {
               </label>
             </div>
 
-            {/* Toggle signals */}
-            <div className="toggle-grid">
-              <label className="toggle-card">
+            <div className="signal-grid">
+              <label className="signal-card">
                 <input
                   type="checkbox"
                   checked={form.isSoftFailure}
@@ -391,12 +637,12 @@ function App() {
                 <span>
                   <strong>Soft Failure</strong>
                   <small>
-                    Eligible for recovery attempt
+                    Eligible recovery signal
                   </small>
                 </span>
               </label>
 
-              <label className="toggle-card">
+              <label className="signal-card">
                 <input
                   type="checkbox"
                   checked={form.ipCountryMismatch}
@@ -411,12 +657,12 @@ function App() {
                 <span>
                   <strong>Country Mismatch</strong>
                   <small>
-                    IP country differs from profile
+                    IP differs from profile
                   </small>
                 </span>
               </label>
 
-              <label className="toggle-card">
+              <label className="signal-card">
                 <input
                   type="checkbox"
                   checked={form.deviceChangeFlag}
@@ -431,41 +677,58 @@ function App() {
                 <span>
                   <strong>Device Changed</strong>
                   <small>
-                    Recent device change signal
+                    Recent device change
                   </small>
                 </span>
               </label>
             </div>
 
-            <div className="customer-note">
-              <strong>Customer intelligence:</strong>{" "}
-              historical customer behavior is loaded
-              automatically by the backend from the
-              customer profile associated with this ID.
+            <div className="intelligence-banner">
+              <div className="intel-icon">✦</div>
+
+              <div>
+                <strong>
+                  Customer intelligence connected
+                </strong>
+
+                <p>
+                  Historical behavior for{" "}
+                  <b>{form.customerId}</b> is enriched
+                  automatically by the backend before ML
+                  scoring.
+                </p>
+              </div>
+
+              <span className="connected-badge">
+                CONNECTED
+              </span>
             </div>
 
             <button
               className="analyze-btn"
               onClick={analyzeTransaction}
               disabled={loading}
+              type="button"
             >
-              {loading
-                ? "Analyzing..."
-                : "Analyze Transaction"}
+              <span>
+                {loading
+                  ? "Running AI Pipeline..."
+                  : "Analyze Transaction"}
+              </span>
 
-              <span>→</span>
+              <span className="button-arrow">
+                →
+              </span>
             </button>
 
             {error && (
               <div className="error-box">
-                {error}
+                <strong>Analysis failed</strong>
+                <span>{error}</span>
               </div>
             )}
           </div>
 
-          {/* -------------------------------------------------
-              RESULT CARD
-          -------------------------------------------------- */}
           <div className="card result-card">
             <div className="card-heading">
               <div>
@@ -482,17 +745,27 @@ function App() {
               <div className="empty-state">
                 <div className="empty-icon">✦</div>
 
-                <h4>Ready for analysis</h4>
+                <h4>Decision engine ready</h4>
 
                 <p>
-                  Submit a transaction to run the
-                  trained Risk, Recovery, and Decision
-                  Engine pipeline.
+                  Analyze a failed payment to run
+                  customer enrichment, Risk, Recovery,
+                  policy checks, and Supabase audit
+                  persistence.
                 </p>
+
+                <div className="pipeline-mini">
+                  <span>Customer</span>
+                  <b>→</b>
+                  <span>ML</span>
+                  <b>→</b>
+                  <span>Policy</span>
+                  <b>→</b>
+                  <span>Decision</span>
+                </div>
               </div>
             ) : (
               <>
-                {/* Decision */}
                 <div
                   className={`decision-banner ${decisionClass}`}
                 >
@@ -500,13 +773,13 @@ function App() {
                     {result.action === "RECOVER"
                       ? "↗"
                       : result.action === "BLOCK"
-                      ? "!"
-                      : result.action === "REVIEW"
-                      ? "?"
-                      : "✓"}
+                        ? "!"
+                        : result.action === "REVIEW"
+                          ? "?"
+                          : "✓"}
                   </div>
 
-                  <div>
+                  <div className="decision-content">
                     <span>
                       RECOMMENDED ACTION
                     </span>
@@ -514,54 +787,103 @@ function App() {
                     <strong>
                       {result.action}
                     </strong>
+
+                    <small>
+                      {result.priority
+                        ? `${result.priority.toUpperCase()} PRIORITY`
+                        : "POLICY DECISION"}
+                    </small>
                   </div>
                 </div>
 
-                {/* Model scores */}
-                <div className="metric-grid">
-                  <div className="metric-card">
-                    <span>Risk Score</span>
-                    <strong>
-                      {riskPercent}%
-                    </strong>
+                <div className="score-grid">
+                  <div className="score-box">
+                    <div className="score-top">
+                      <span>Risk Score</span>
+
+                      <strong>
+                        {riskPercent}%
+                      </strong>
+                    </div>
+
+                    <div className="meter">
+                      <div
+                        style={{
+                          width: `${riskWidth}%`,
+                        }}
+                      ></div>
+                    </div>
+
+                    <small>
+                      Fraud / risk probability
+                    </small>
                   </div>
 
-                  <div className="metric-card">
-                    <span>Recovery Probability</span>
-                    <strong>
-                      {recoveryPercent}%
-                    </strong>
-                  </div>
-                </div>
-
-                {/* Reason */}
-                <div className="reason-box">
-                  <span>WHY THIS DECISION</span>
-
-                  <strong>
-                    {result.human_readable_reason}
-                  </strong>
-
-                  <small>
-                    Reason code:{" "}
-                    {result.reason_code}
-                  </small>
-                </div>
-
-                {/* Policy */}
-                {result.metadata?.merchant_policy && (
-                  <div className="policy-box">
-                    <div className="policy-header">
+                  <div className="score-box">
+                    <div className="score-top">
                       <span>
-                        MERCHANT POLICY
+                        Recovery Probability
                       </span>
 
                       <strong>
-                        {result.metadata
-                          .merchant_policy
-                          .risk_tolerance_label
-                          ?.toUpperCase()}
+                        {recoveryPercent}%
                       </strong>
+                    </div>
+
+                    <div className="meter recovery">
+                      <div
+                        style={{
+                          width: `${recoveryWidth}%`,
+                        }}
+                      ></div>
+                    </div>
+
+                    <small>
+                      Likelihood of successful recovery
+                    </small>
+                  </div>
+                </div>
+
+                <div className="reason-box">
+                  <div className="box-label">
+                    WHY THIS DECISION
+                  </div>
+
+                  <p>{decisionExplanation}</p>
+
+                  <div className="reason-meta">
+                    <div>
+                      <span>MODEL REASON</span>
+                      <code>{result.reason_code}</code>
+                    </div>
+
+                    <div>
+                      <span>PRIORITY</span>
+                      <strong>
+                        {result.priority?.toUpperCase() || "—"}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+
+
+
+                {policy && (
+                  <div className="policy-box">
+                    <div className="policy-header">
+                      <div>
+                        <span>
+                          MERCHANT POLICY
+                        </span>
+
+                        <strong>
+                          {policy.risk_tolerance_label?.toUpperCase()}
+                        </strong>
+                      </div>
+
+                      <span className="policy-live">
+                        ACTIVE
+                      </span>
                     </div>
 
                     <div className="policy-grid">
@@ -586,8 +908,7 @@ function App() {
 
                         <strong>
                           {(
-                            result.metadata
-                              .recovery_score_threshold *
+                            policy.min_recovery_probability_for_auto_action *
                             100
                           ).toFixed(0)}
                           %
@@ -596,76 +917,99 @@ function App() {
 
                       <div>
                         <span>
-                          Max auto retries
+                          Max retries
                         </span>
 
                         <strong>
-                          {
-                            result.metadata
-                              .merchant_policy
-                              .max_auto_retries
-                          }
+                          {policy.max_auto_retries}
+                        </strong>
+                      </div>
+
+                      <div>
+                        <span>
+                          Auto retry
+                        </span>
+
+                        <strong>
+                          {policy.auto_retry_enabled
+                            ? "ON"
+                            : "OFF"}
                         </strong>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* Persistence */}
-                {result.metadata?.persistence && (
+                {persistence && (
                   <div className="audit-box">
                     <div className="audit-header">
-                      <span>
-                        AUDIT & PERSISTENCE
-                      </span>
+                      <div>
+                        <span>
+                          AUDIT & PERSISTENCE
+                        </span>
+
+                        <small>
+                          Transaction flow saved to
+                          Supabase
+                        </small>
+                      </div>
 
                       <span className="audit-status">
                         ● SAVED
                       </span>
                     </div>
 
-                    <div className="audit-row">
-                      <span>Transaction</span>
+                    <div className="audit-list">
+                      {[
+                        [
+                          "Transaction",
+                          persistence.transaction_id,
+                          "transaction",
+                        ],
+                        [
+                          "Payment Attempt",
+                          persistence.payment_attempt_id,
+                          "attempt",
+                        ],
+                        [
+                          "Decision",
+                          persistence.decision_id,
+                          "decision",
+                        ],
+                        [
+                          "Audit Event",
+                          persistence.audit_event_id,
+                          "audit",
+                        ],
+                      ].map(
+                        ([label, value, key]) => (
+                          <div
+                            className="audit-row"
+                            key={key}
+                          >
+                            <span>{label}</span>
 
-                      <code>
-                        {
-                          result.metadata.persistence
-                            .transaction_id
-                        }
-                      </code>
-                    </div>
+                            <code title={value}>
+                              {value}
+                            </code>
 
-                    <div className="audit-row">
-                      <span>Payment Attempt</span>
-
-                      <code>
-                        {
-                          result.metadata.persistence
-                            .payment_attempt_id
-                        }
-                      </code>
-                    </div>
-
-                    <div className="audit-row">
-                      <span>Decision</span>
-
-                      <code>
-                        {
-                          result.metadata.persistence
-                            .decision_id
-                        }
-                      </code>
-                    </div>
-
-                    <div className="audit-row">
-                      <span>Audit Event</span>
-
-                      <code>
-                        {
-                          result.metadata.persistence
-                            .audit_event_id
-                        }
-                      </code>
+                            <button
+                              type="button"
+                              className="copy-btn"
+                              onClick={() =>
+                                copyValue(
+                                  value,
+                                  key
+                                )
+                              }
+                            >
+                              {copied === key
+                                ? "Copied"
+                                : "Copy"}
+                            </button>
+                          </div>
+                        )
+                      )}
                     </div>
                   </div>
                 )}
@@ -673,6 +1017,15 @@ function App() {
             )}
           </div>
         </section>
+
+        <footer>
+          <span>RevenueRescue AI</span>
+
+          <span>
+            ML inference · Decision engine · Supabase
+            audit
+          </span>
+        </footer>
       </main>
     </div>
   );
