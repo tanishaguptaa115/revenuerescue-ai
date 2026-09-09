@@ -151,6 +151,26 @@ class DecisionResponse(BaseModel):
 
     metadata: dict
 
+class CustomerProfileResponse(BaseModel):
+    """Customer profile information used for ML enrichment."""
+
+    customer_id: str
+    archetype: str
+    customer_tenure_days: int
+
+    customer_past_success_rate: float
+    customer_past_recovery_rate: float
+
+    avg_transaction_amount_customer: float
+    chargeback_history_count: int
+
+    device_change_tendency: float
+    ip_mismatch_tendency: float
+    method_switching_tendency: float
+    velocity_tendency: float
+    nudge_ignore_tendency: float
+    opt_out_tendency: float
+
 
 # ---------------------------------------------------------------------------
 # Decision helper
@@ -276,6 +296,76 @@ def health() -> dict:
         "status": "ok",
         "service": "RevenueRescue AI API",
     }
+
+@app.get(
+    "/customer-profile/{customer_id}",
+    response_model=CustomerProfileResponse,
+)
+def get_customer_profile(
+    customer_id: str,
+) -> CustomerProfileResponse:
+    """
+    Return the historical customer profile used for ML enrichment.
+    """
+
+    customer_profile = CUSTOMER_PROFILES.get(customer_id)
+
+    if customer_profile is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown customer_id: {customer_id}",
+        )
+
+    try:
+        return CustomerProfileResponse(
+            customer_id=customer_profile["customer_id"],
+            archetype=customer_profile["archetype"],
+            customer_tenure_days=int(
+                float(customer_profile["customer_tenure_days"])
+            ),
+            customer_past_success_rate=float(
+                customer_profile["customer_past_success_rate"]
+            ),
+            customer_past_recovery_rate=float(
+                customer_profile["customer_past_recovery_rate"]
+            ),
+            avg_transaction_amount_customer=float(
+                customer_profile[
+                    "avg_transaction_amount_customer"
+                ]
+            ),
+            chargeback_history_count=int(
+                float(
+                    customer_profile[
+                        "chargeback_history_count"
+                    ]
+                )
+            ),
+            device_change_tendency=float(
+                customer_profile["device_change_tendency"]
+            ),
+            ip_mismatch_tendency=float(
+                customer_profile["ip_mismatch_tendency"]
+            ),
+            method_switching_tendency=float(
+                customer_profile["method_switching_tendency"]
+            ),
+            velocity_tendency=float(
+                customer_profile["velocity_tendency"]
+            ),
+            nudge_ignore_tendency=float(
+                customer_profile["nudge_ignore_tendency"]
+            ),
+            opt_out_tendency=float(
+                customer_profile["opt_out_tendency"]
+            ),
+        )
+
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=500,
+            detail="Customer profile data is invalid.",
+        ) from exc
 
 
 @app.post("/decision", response_model=DecisionResponse)
@@ -468,6 +558,7 @@ def score_and_decide(
             status_code=500,
             detail="ML scoring failed unexpectedly.",
         ) from exc
+    
     except (ValueError, FileNotFoundError) as exc:
         raise HTTPException(
             status_code=400,

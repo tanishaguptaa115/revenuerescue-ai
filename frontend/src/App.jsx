@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+﻿import { useEffect, useState } from "react";
 import "./App.css";
 
 const MERCHANT_ID = "985d35c9-fdbb-4d2a-b974-a71c72b86fae";
@@ -102,15 +102,20 @@ function getDecisionExplanation(result) {
   const policy = result.metadata?.merchant_policy;
   const risk = Number(result.risk_score ?? 0);
   const recovery = Number(result.recovery_score ?? 0);
+
   const riskTolerance = Number(
     result.merchant_risk_tolerance ?? 0
   );
+
   const recoveryThreshold = Number(
     result.metadata?.recovery_score_threshold ?? 0
   );
+
   const retryCount = Number(
     result.metadata?.retry_count_so_far ?? 0
-  ); if (
+  );
+
+  if (
     policy &&
     retryCount >= Number(policy.max_auto_retries)
   ) {
@@ -121,13 +126,11 @@ function getDecisionExplanation(result) {
     case "LOW_RECOVERY_PROBABILITY":
       return `Recovery probability is ${(recovery * 100).toFixed(
         1
-      )}%, below the ${(
-        recoveryThreshold * 100
-      ).toFixed(
+      )}%, below the ${(recoveryThreshold * 100).toFixed(
         0
-      )}% merchant auto-recovery threshold. Risk remains below the ${(
-        riskTolerance * 100
-      ).toFixed(0)}% review threshold, so no automated recovery is attempted.`;
+      )}% merchant auto-recovery threshold. Risk remains below the ${(riskTolerance * 100).toFixed(
+        0
+      )}% review threshold, so no automated recovery is attempted.`;
 
     case "MAX_RETRIES_REACHED":
       return `Automated recovery is suppressed because the transaction has already reached ${retryCount} retries, reducing the risk of repeated payment attempts.`;
@@ -135,9 +138,9 @@ function getDecisionExplanation(result) {
     case "HIGH_RISK_REVIEW":
       return `Risk is ${(risk * 100).toFixed(
         1
-      )}%, at or above the merchant's ${(
-        riskTolerance * 100
-      ).toFixed(0)}% review threshold, so the transaction is routed for review.`;
+      )}%, at or above the ${(riskTolerance * 100).toFixed(
+        0
+      )}% review threshold, so the transaction is routed for review.`;
 
     case "HIGH_RISK_BLOCK":
       return `Risk is ${(risk * 100).toFixed(
@@ -147,14 +150,12 @@ function getDecisionExplanation(result) {
     case "RECOVERY_RECOMMENDED":
       return `Recovery probability is ${(recovery * 100).toFixed(
         1
-      )}%, above the ${(
-        recoveryThreshold * 100
-      ).toFixed(
+      )}%, above the ${(recoveryThreshold * 100).toFixed(
         0
       )}% merchant threshold, while risk remains within the merchant's allowed range. Automated recovery is recommended.`;
 
     case "HARD_FAILURE_NO_RECOVERY":
-      return `This payment failure is classified as a hard failure, so automated recovery is intentionally skipped.`;
+      return "This payment failure is classified as a hard failure, so automated recovery is intentionally skipped.";
 
     default:
       return result.human_readable_reason;
@@ -168,12 +169,72 @@ function App() {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState("");
 
+  const [customerProfile, setCustomerProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState("");
+
   const update = (key, value) => {
     setForm((prev) => ({
       ...prev,
       [key]: value,
     }));
   };
+
+  useEffect(() => {
+    const customerId = form.customerId.trim();
+
+    if (!customerId) {
+      setCustomerProfile(null);
+      setProfileError("");
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadCustomerProfile = async () => {
+      setProfileLoading(true);
+      setProfileError("");
+
+      try {
+        const response = await fetch(
+          `http://127.0.0.1:8000/customer-profile/${encodeURIComponent(
+            customerId
+          )}`
+        );
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            data.detail ||
+              "Unable to load customer profile."
+          );
+        }
+
+        if (!cancelled) {
+          setCustomerProfile(data);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setCustomerProfile(null);
+          setProfileError(
+            err.message ||
+              "Unable to load customer profile."
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setProfileLoading(false);
+        }
+      }
+    };
+
+    loadCustomerProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [form.customerId]);
 
   const applyScenario = (scenarioKey) => {
     setForm(scenarios[scenarioKey].values);
@@ -207,11 +268,14 @@ function App() {
     setError("");
     setResult(null);
 
-    const daysSinceSuccess = Number(
-      form.daysSinceLastSuccessfulPayment
-    );
+    const rawDays =
+      form.daysSinceLastSuccessfulPayment;
+
+    const daysSinceSuccess =
+      rawDays === "" ? null : Number(rawDays);
 
     const hasPriorSuccess =
+      daysSinceSuccess !== null &&
       Number.isFinite(daysSinceSuccess) &&
       daysSinceSuccess >= 0;
 
@@ -279,7 +343,7 @@ function App() {
     } catch (err) {
       setError(
         err.message ||
-        "Unable to connect to the RevenueRescue API."
+          "Unable to connect to the RevenueRescue API."
       );
     } finally {
       setLoading(false);
@@ -305,8 +369,11 @@ function App() {
   const decisionClass =
     result?.action?.toLowerCase() || "";
 
-  const policy = result?.metadata?.merchant_policy;
-  const persistence = result?.metadata?.persistence;
+  const policy =
+    result?.metadata?.merchant_policy;
+
+  const persistence =
+    result?.metadata?.persistence;
 
   const decisionExplanation =
     getDecisionExplanation(result);
@@ -320,7 +387,8 @@ function App() {
           <div>
             <h1>RevenueRescue AI</h1>
             <p>
-              Autonomous payment recovery & risk intelligence
+              Autonomous payment recovery & risk
+              intelligence
             </p>
           </div>
         </div>
@@ -360,33 +428,42 @@ function App() {
 
           <p>
             RevenueRescue AI combines customer context,
-            trained ML models, and merchant policy to decide
-            what should happen after a payment failure.
+            trained ML models, and merchant policy to
+            decide what should happen after a payment
+            failure.
           </p>
         </section>
 
         <section className="kpi-strip">
           <div className="kpi-card">
             <span>RISK MODEL</span>
+
             <strong>
               {result ? `${riskPercent}%` : "—"}
             </strong>
+
             <small>fraud probability</small>
           </div>
 
           <div className="kpi-card">
             <span>RECOVERY MODEL</span>
+
             <strong>
-              {result ? `${recoveryPercent}%` : "—"}
+              {result
+                ? `${recoveryPercent}%`
+                : "—"}
             </strong>
+
             <small>recovery probability</small>
           </div>
 
           <div className="kpi-card">
             <span>DECISION</span>
+
             <strong className={decisionClass}>
               {result?.action || "READY"}
             </strong>
+
             <small>
               {result
                 ? "policy-aware outcome"
@@ -396,9 +473,11 @@ function App() {
 
           <div className="kpi-card">
             <span>CUSTOMER</span>
+
             <strong className="customer-kpi">
               {form.customerId}
             </strong>
+
             <small>profile-backed context</small>
           </div>
         </section>
@@ -409,6 +488,7 @@ function App() {
               <span className="section-kicker">
                 DEMO SCENARIOS
               </span>
+
               <h3>
                 Show the decision engine in action
               </h3>
@@ -426,10 +506,17 @@ function App() {
                   key={key}
                   className="scenario-card"
                   type="button"
-                  onClick={() => applyScenario(key)}
+                  onClick={() =>
+                    applyScenario(key)
+                  }
                 >
-                  <strong>{scenario.label}</strong>
-                  <span>{scenario.description}</span>
+                  <strong>
+                    {scenario.label}
+                  </strong>
+
+                  <span>
+                    {scenario.description}
+                  </span>
                 </button>
               )
             )}
@@ -533,6 +620,10 @@ function App() {
                   <option value="authentication_failed">
                     Authentication Failed
                   </option>
+
+                  <option value="card_declined_issuer">
+                    Card Declined by Issuer
+                  </option>
                 </select>
               </label>
 
@@ -611,6 +702,7 @@ function App() {
                   value={
                     form.daysSinceLastSuccessfulPayment
                   }
+                  placeholder="Unknown"
                   onChange={(e) =>
                     update(
                       "daysSinceLastSuccessfulPayment",
@@ -645,7 +737,9 @@ function App() {
               <label className="signal-card">
                 <input
                   type="checkbox"
-                  checked={form.ipCountryMismatch}
+                  checked={
+                    form.ipCountryMismatch
+                  }
                   onChange={(e) =>
                     update(
                       "ipCountryMismatch",
@@ -655,7 +749,10 @@ function App() {
                 />
 
                 <span>
-                  <strong>Country Mismatch</strong>
+                  <strong>
+                    Country Mismatch
+                  </strong>
+
                   <small>
                     IP differs from profile
                   </small>
@@ -676,6 +773,7 @@ function App() {
 
                 <span>
                   <strong>Device Changed</strong>
+
                   <small>
                     Recent device change
                   </small>
@@ -683,25 +781,130 @@ function App() {
               </label>
             </div>
 
-            <div className="intelligence-banner">
-              <div className="intel-icon">✦</div>
+            <div className="intelligence-panel">
+              <div className="intelligence-header">
+                <div className="intelligence-title">
+                  <div className="intel-icon">
+                    ✦
+                  </div>
 
-              <div>
-                <strong>
-                  Customer intelligence connected
-                </strong>
+                  <div>
+                    <strong>
+                      Customer Intelligence
+                    </strong>
 
-                <p>
-                  Historical behavior for{" "}
-                  <b>{form.customerId}</b> is enriched
-                  automatically by the backend before ML
-                  scoring.
-                </p>
+                    <p>
+                      Historical profile used for ML
+                      enrichment
+                    </p>
+                  </div>
+                </div>
+
+                {profileLoading ? (
+                  <span className="profile-status loading">
+                    LOADING
+                  </span>
+                ) : customerProfile ? (
+                  <span className="profile-status connected">
+                    ● CONNECTED
+                  </span>
+                ) : (
+                  <span className="profile-status error">
+                    UNAVAILABLE
+                  </span>
+                )}
               </div>
 
-              <span className="connected-badge">
-                CONNECTED
-              </span>
+              {profileLoading ? (
+                <div className="profile-loading">
+                  Loading customer profile...
+                </div>
+              ) : customerProfile ? (
+                <div className="profile-grid">
+                  <div className="profile-item">
+                    <span>PROFILE</span>
+
+                    <strong>
+                      {customerProfile.archetype.replaceAll(
+                        "_",
+                        " "
+                      )}
+                    </strong>
+                  </div>
+
+                  <div className="profile-item">
+                    <span>
+                      AVG TRANSACTION
+                    </span>
+
+                    <strong>
+                      ₹
+                      {Number(
+                        customerProfile
+                          .avg_transaction_amount_customer
+                      ).toLocaleString(
+                        "en-IN",
+                        {
+                          maximumFractionDigits: 2,
+                        }
+                      )}
+                    </strong>
+                  </div>
+
+                  <div className="profile-item">
+                    <span>PAST SUCCESS</span>
+
+                    <strong>
+                      {(
+                        customerProfile
+                          .customer_past_success_rate *
+                        100
+                      ).toFixed(1)}
+                      %
+                    </strong>
+                  </div>
+
+                  <div className="profile-item">
+                    <span>PAST RECOVERY</span>
+
+                    <strong>
+                      {(
+                        customerProfile
+                          .customer_past_recovery_rate *
+                        100
+                      ).toFixed(1)}
+                      %
+                    </strong>
+                  </div>
+
+                  <div className="profile-item">
+                    <span>CHARGEBACKS</span>
+
+                    <strong>
+                      {
+                        customerProfile
+                          .chargeback_history_count
+                      }
+                    </strong>
+                  </div>
+
+                  <div className="profile-item">
+                    <span>TENURE</span>
+
+                    <strong>
+                      {
+                        customerProfile.customer_tenure_days
+                      }{" "}
+                      days
+                    </strong>
+                  </div>
+                </div>
+              ) : (
+                <div className="profile-error">
+                  {profileError ||
+                    "Enter a valid customer ID to load profile data."}
+                </div>
+              )}
             </div>
 
             <button
@@ -743,9 +946,13 @@ function App() {
 
             {!result ? (
               <div className="empty-state">
-                <div className="empty-icon">✦</div>
+                <div className="empty-icon">
+                  ✦
+                </div>
 
-                <h4>Decision engine ready</h4>
+                <h4>
+                  Decision engine ready
+                </h4>
 
                 <p>
                   Analyze a failed payment to run
@@ -773,10 +980,10 @@ function App() {
                     {result.action === "RECOVER"
                       ? "↗"
                       : result.action === "BLOCK"
-                        ? "!"
-                        : result.action === "REVIEW"
-                          ? "?"
-                          : "✓"}
+                      ? "!"
+                      : result.action === "REVIEW"
+                      ? "?"
+                      : "✓"}
                   </div>
 
                   <div className="decision-content">
@@ -849,24 +1056,29 @@ function App() {
                     WHY THIS DECISION
                   </div>
 
-                  <p>{decisionExplanation}</p>
+                  <p>
+                    {decisionExplanation}
+                  </p>
 
                   <div className="reason-meta">
                     <div>
                       <span>MODEL REASON</span>
-                      <code>{result.reason_code}</code>
+
+                      <code>
+                        {result.reason_code}
+                      </code>
                     </div>
 
                     <div>
                       <span>PRIORITY</span>
+
                       <strong>
-                        {result.priority?.toUpperCase() || "—"}
+                        {result.priority?.toUpperCase() ||
+                          "—"}
                       </strong>
                     </div>
                   </div>
                 </div>
-
-
 
                 {policy && (
                   <div className="policy-box">
@@ -926,9 +1138,7 @@ function App() {
                       </div>
 
                       <div>
-                        <span>
-                          Auto retry
-                        </span>
+                        <span>Auto retry</span>
 
                         <strong>
                           {policy.auto_retry_enabled
@@ -1022,8 +1232,7 @@ function App() {
           <span>RevenueRescue AI</span>
 
           <span>
-            ML inference · Decision engine · Supabase
-            audit
+            ML inference · Decision engine · Supabase audit
           </span>
         </footer>
       </main>

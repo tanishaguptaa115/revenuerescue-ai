@@ -1910,3 +1910,163 @@ footer {
 
   font-size: 9px;
 }
+
+/* =========================================================
+   CUSTOMER PROFILE PREVIEW
+   ========================================================= */
+
+.intelligence-panel {
+  margin-top: 14px;
+  padding: 15px;
+
+  border: 1px solid rgba(56, 189, 248, 0.14);
+  border-radius: 13px;
+
+  background:
+    linear-gradient(
+      135deg,
+      rgba(14, 165, 233, 0.055),
+      rgba(20, 184, 166, 0.035)
+    );
+}
+
+.intelligence-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 12px;
+
+  margin-bottom: 13px;
+}
+
+.intelligence-title {
+  display: flex;
+  align-items: center;
+
+  gap: 10px;
+
+  min-width: 0;
+}
+
+.intelligence-title > div:last-child {
+  min-width: 0;
+}
+
+.intelligence-title strong {
+  display: block;
+
+  color: #dce9f3;
+
+  font-size: 11px;
+}
+
+.intelligence-title p {
+  margin: 3px 0 0;
+
+  color: #60758c;
+
+  font-size: 9px;
+}
+
+.profile-status {
+  flex: 0 0 auto;
+
+  font-size: 8px;
+  font-weight: 900;
+
+  letter-spacing: 0.08em;
+}
+
+.profile-status.connected {
+  color: #52e3a3;
+}
+
+.profile-status.loading {
+  color: #67e8f9;
+}
+
+.profile-status.error {
+  color: #fca5a5;
+}
+
+.profile-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(3, minmax(0, 1fr));
+
+  gap: 8px;
+}
+
+.profile-item {
+  min-width: 0;
+
+  padding: 10px;
+
+  border: 1px solid rgba(148, 163, 184, 0.08);
+  border-radius: 9px;
+
+  background:
+    rgba(4, 12, 24, 0.35);
+}
+
+.profile-item span {
+  display: block;
+
+  color: #53677f;
+
+  font-size: 7px;
+  font-weight: 800;
+
+  letter-spacing: 0.08em;
+}
+
+.profile-item strong {
+  display: block;
+
+  margin-top: 5px;
+
+  overflow: hidden;
+
+  color: #cfdce7;
+
+  font-size: 11px;
+
+  line-height: 1.25;
+
+  text-overflow: ellipsis;
+
+  text-transform: capitalize;
+
+  white-space: nowrap;
+}
+
+.profile-loading,
+.profile-error {
+  padding: 10px;
+
+  border-radius: 8px;
+
+  background:
+    rgba(4, 12, 24, 0.32);
+
+  color: #647891;
+
+  font-size: 9px;
+}
+
+.profile-error {
+  color: #e89a9a;
+}
+
+@media (max-width: 640px) {
+  .profile-grid {
+    grid-template-columns:
+      repeat(2, minmax(0, 1fr));
+  }
+
+  .intelligence-header {
+    align-items: flex-start;
+  }
+}
