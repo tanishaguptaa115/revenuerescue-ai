@@ -162,6 +162,74 @@ function getDecisionExplanation(result) {
   }
 }
 
+function getTimelineSteps(result, customerProfile) {
+  if (!result) return [];
+
+  return [
+    {
+      label: "Transaction",
+      detail: "Received",
+      status: "complete",
+    },
+    {
+      label: "Customer",
+      detail: customerProfile
+        ? "Enriched"
+        : "Profile unavailable",
+      status: customerProfile
+        ? "complete"
+        : "warning",
+    },
+    {
+      label: "Risk Model",
+      detail:
+        typeof result.risk_score === "number"
+          ? "Scored"
+          : "Pending",
+      status:
+        typeof result.risk_score === "number"
+          ? "complete"
+          : "pending",
+    },
+    {
+      label: "Recovery Model",
+      detail:
+        typeof result.recovery_score === "number"
+          ? "Scored"
+          : "Skipped",
+      status:
+        typeof result.recovery_score === "number"
+          ? "complete"
+          : "skipped",
+    },
+    {
+      label: "Merchant Policy",
+      detail: result.metadata?.merchant_policy
+        ? "Applied"
+        : "Unavailable",
+      status: result.metadata?.merchant_policy
+        ? "complete"
+        : "warning",
+    },
+    {
+      label: "Decision",
+      detail: result.action || "Pending",
+      status: result.action
+        ? "complete"
+        : "pending",
+    },
+    {
+      label: "Supabase Audit",
+      detail: result.metadata?.persistence
+        ? "Saved"
+        : "Pending",
+      status: result.metadata?.persistence
+        ? "complete"
+        : "pending",
+    },
+  ];
+}
+
 function App() {
   const [form, setForm] = useState(initialForm);
   const [loading, setLoading] = useState(false);
@@ -207,7 +275,7 @@ function App() {
         if (!response.ok) {
           throw new Error(
             data.detail ||
-              "Unable to load customer profile."
+            "Unable to load customer profile."
           );
         }
 
@@ -219,7 +287,7 @@ function App() {
           setCustomerProfile(null);
           setProfileError(
             err.message ||
-              "Unable to load customer profile."
+            "Unable to load customer profile."
           );
         }
       } finally {
@@ -343,7 +411,7 @@ function App() {
     } catch (err) {
       setError(
         err.message ||
-          "Unable to connect to the RevenueRescue API."
+        "Unable to connect to the RevenueRescue API."
       );
     } finally {
       setLoading(false);
@@ -980,10 +1048,10 @@ function App() {
                     {result.action === "RECOVER"
                       ? "↗"
                       : result.action === "BLOCK"
-                      ? "!"
-                      : result.action === "REVIEW"
-                      ? "?"
-                      : "✓"}
+                        ? "!"
+                        : result.action === "REVIEW"
+                          ? "?"
+                          : "✓"}
                   </div>
 
                   <div className="decision-content">
@@ -1000,6 +1068,53 @@ function App() {
                         ? `${result.priority.toUpperCase()} PRIORITY`
                         : "POLICY DECISION"}
                     </small>
+                  </div>
+                </div>
+
+                <div className="timeline-box">
+                  <div className="timeline-header">
+                    <div>
+                      <span>DECISION PIPELINE</span>
+
+                      <strong>
+                        End-to-end execution trace
+                      </strong>
+                    </div>
+
+                    <span className="timeline-live">
+                      LIVE
+                    </span>
+                  </div>
+
+                  <div className="timeline">
+                    {getTimelineSteps(
+                      result,
+                      customerProfile
+                    ).map((step, index, steps) => (
+                      <div
+                        className={`timeline-step ${step.status}`}
+                        key={step.label}
+                      >
+                        <div className="timeline-node">
+                          {step.status === "complete"
+                            ? "✓"
+                            : step.status === "warning"
+                              ? "!"
+                              : step.status === "skipped"
+                                ? "–"
+                                : "·"}
+                        </div>
+
+                        <div className="timeline-content">
+                          <strong>{step.label}</strong>
+                          <span>{step.detail}</span>
+                        </div>
+
+                        {index < steps.length - 1 && (
+                          <div className="timeline-connector"></div>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
 
