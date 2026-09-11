@@ -2300,3 +2300,74 @@ footer {
     gap: 5px;
   }
 }
+
+.recommendation-box {
+  margin-top: 16px;
+}
+
+.recommendation-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.recommendation-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.recommendation-status {
+  flex: 0 0 auto;
+}
+
+.recommendation-dot {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.recommendation-dot.pass {
+  background: rgba(56, 189, 130, 0.14);
+  color: #55d6a2;
+}
+
+.recommendation-dot.warning {
+  background: rgba(245, 180, 70, 0.14);
+  color: #f2bd63;
+}
+
+.recommendation-dot.fail {
+  background: rgba(239, 98, 98, 0.14);
+  color: #ff8585;
+}
+
+.recommendation-dot.final {
+  background: rgba(89, 170, 255, 0.14);
+  color: #78bcff;
+}
+
+.recommendation-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.recommendation-copy strong {
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+
+.recommendation-copy span {
+  font-size: 12px;
+  line-height: 1.5;
+  opacity: 0.68;
+}

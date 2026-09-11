@@ -162,6 +162,132 @@ function getDecisionExplanation(result) {
   }
 }
 
+function getRecommendationDetails(result) {
+  if (!result) return [];
+
+  const policy = result.metadata?.merchant_policy;
+
+  const risk = Number(result.risk_score ?? 0);
+  const recovery = Number(result.recovery_score ?? 0);
+
+  const riskTolerance = Number(
+    result.merchant_risk_tolerance ?? 0
+  );
+
+  const blockThreshold = Number(
+    result.metadata?.block_threshold ?? 0
+  );
+
+  const recoveryThreshold = Number(
+    result.metadata?.recovery_score_threshold ?? 0
+  );
+
+  const retryCount = Number(
+    result.metadata?.retry_count_so_far ?? 0
+  );
+
+  const maxRetries = Number(
+    policy?.max_auto_retries ?? 0
+  );
+
+  const amount = Number(
+    result.metadata?.amount ?? 0
+  );
+
+  const maxAutoAmount = Number(
+    policy?.max_auto_action_amount ?? 0
+  );
+
+  const riskBelowReview = risk < riskTolerance;
+  const belowBlock = risk < blockThreshold;
+  const recoveryEligible =
+    recovery >= recoveryThreshold;
+
+  const retryAvailable =
+    retryCount < maxRetries;
+
+  const amountWithinLimit =
+    amount <= maxAutoAmount;
+
+  let riskStatus = "pass";
+  let riskDetail = `Risk ${(risk * 100).toFixed(
+    1
+  )}% is below the ${(riskTolerance * 100).toFixed(
+    0
+  )}% review threshold.`;
+
+  if (risk >= blockThreshold) {
+    riskStatus = "fail";
+    riskDetail = `Risk ${(risk * 100).toFixed(
+      1
+    )}% exceeds the ${(blockThreshold * 100).toFixed(
+      0
+    )}% block threshold.`;
+  } else if (!riskBelowReview) {
+    riskStatus = "warning";
+    riskDetail = `Risk ${(risk * 100).toFixed(
+      1
+    )}% reaches the ${(riskTolerance * 100).toFixed(
+      0
+    )}% review threshold.`;
+  }
+
+  return [
+    {
+      label: "Risk Safety Gate",
+      detail: riskDetail,
+      status: riskStatus,
+    },
+    {
+      label: "Recovery Gate",
+      detail: `Recovery ${(recovery * 100).toFixed(
+        1
+      )}% ${recoveryEligible
+          ? "meets"
+          : "is below"
+        } the ${(recoveryThreshold * 100).toFixed(
+          0
+        )}% merchant threshold.`,
+      status: recoveryEligible
+        ? "pass"
+        : "warning",
+    },
+    {
+      label: "Retry Guard",
+      detail: `${retryCount} / ${maxRetries} automated retries used.`,
+      status: retryAvailable
+        ? "pass"
+        : "fail",
+    },
+    {
+      label: "Amount Guard",
+      detail: `₹${amount.toLocaleString(
+        "en-IN"
+      )} ${amountWithinLimit
+          ? "is within"
+          : "exceeds"
+        } the ₹${maxAutoAmount.toLocaleString(
+          "en-IN"
+        )} auto-action limit.`,
+      status: amountWithinLimit
+        ? "pass"
+        : "warning",
+    },
+    {
+      label: "Final Recommendation",
+      detail:
+        result.action === "RECOVER"
+          ? "Automated recovery is recommended."
+          : result.action === "REVIEW"
+            ? "Human review is recommended."
+            : result.action === "BLOCK"
+              ? "The transaction should be blocked."
+              : "Automated recovery is not recommended for this transaction.",
+      status: "final",
+    },
+  ];
+}
+
 function getTimelineSteps(result, customerProfile) {
   if (!result) return [];
 
@@ -445,6 +571,9 @@ function App() {
 
   const decisionExplanation =
     getDecisionExplanation(result);
+
+  const recommendationDetails =
+    getRecommendationDetails(result);
 
   return (
     <div className="app-shell">
@@ -1192,6 +1321,59 @@ function App() {
                           "—"}
                       </strong>
                     </div>
+                  </div>
+                </div>
+
+                <div className="policy-box recommendation-box">
+                  <div className="policy-header">
+                    <div>
+                      <span>
+                        ACTION RECOMMENDATION DETAILS
+                      </span>
+
+                      <strong>
+                        {result.action}
+                      </strong>
+                    </div>
+
+                    <span className="policy-live">
+                      EVALUATED
+                    </span>
+                  </div>
+
+                  <div className="recommendation-list">
+                    {recommendationDetails.map(
+                      (item) => (
+                        <div
+                          className="recommendation-row"
+                          key={item.label}
+                        >
+                          <div className="recommendation-status">
+                            <span
+                              className={`recommendation-dot ${item.status}`}
+                            >
+                              {item.status === "pass"
+                                ? "✓"
+                                : item.status === "fail"
+                                  ? "!"
+                                  : item.status === "warning"
+                                    ? "!"
+                                    : "→"}
+                            </span>
+                          </div>
+
+                          <div className="recommendation-copy">
+                            <strong>
+                              {item.label}
+                            </strong>
+
+                            <span>
+                              {item.detail}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    )}
                   </div>
                 </div>
 
