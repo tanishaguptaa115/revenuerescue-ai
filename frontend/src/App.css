@@ -2371,3 +2371,42 @@ footer {
   line-height: 1.5;
   opacity: 0.68;
 }
+
+.execution-box {
+  margin-top: 16px;
+}
+
+.execution-description {
+  margin: 14px 0 16px;
+  font-size: 12px;
+  line-height: 1.6;
+  opacity: 0.72;
+}
+
+.execution-steps {
+  display: grid;
+  gap: 8px;
+}
+
+.execution-step {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 13px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.execution-step > span {
+  min-width: 28px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  opacity: 0.45;
+}
+
+.execution-step strong {
+  font-size: 12px;
+  line-height: 1.45;
+}

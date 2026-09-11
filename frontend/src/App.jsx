@@ -243,8 +243,8 @@ function getRecommendationDetails(result) {
       detail: `Recovery ${(recovery * 100).toFixed(
         1
       )}% ${recoveryEligible
-          ? "meets"
-          : "is below"
+        ? "meets"
+        : "is below"
         } the ${(recoveryThreshold * 100).toFixed(
           0
         )}% merchant threshold.`,
@@ -264,8 +264,8 @@ function getRecommendationDetails(result) {
       detail: `₹${amount.toLocaleString(
         "en-IN"
       )} ${amountWithinLimit
-          ? "is within"
-          : "exceeds"
+        ? "is within"
+        : "exceeds"
         } the ₹${maxAutoAmount.toLocaleString(
           "en-IN"
         )} auto-action limit.`,
@@ -286,6 +286,88 @@ function getRecommendationDetails(result) {
       status: "final",
     },
   ];
+}
+
+function getExecutionPlan(result) {
+  if (!result) return null;
+
+  const policy = result.metadata?.merchant_policy;
+
+  const action = result.action;
+  const retryCount = Number(
+    result.metadata?.retry_count_so_far ?? 0
+  );
+
+  const maxRetries = Number(
+    policy?.max_auto_retries ?? 0
+  );
+
+  const cooldown = Number(
+    policy?.cooldown_minutes ?? 0
+  );
+
+  const autoRetry = Boolean(
+    policy?.auto_retry_enabled
+  );
+
+  const autoNudge = Boolean(
+    policy?.auto_nudge_enabled
+  );
+
+  if (action === "RECOVER") {
+    return {
+      action: "AUTOMATED RECOVERY",
+      description:
+        "The system can attempt the configured recovery path for this payment.",
+      steps: [
+        autoRetry
+          ? "Automatic retry is enabled."
+          : "Automatic retry is disabled.",
+        autoNudge
+          ? "Customer nudge is enabled."
+          : "Customer nudge is disabled.",
+        `${retryCount} of ${maxRetries} automated retries have been used.`,
+        `Configured cooldown: ${cooldown} minutes.`,
+      ],
+    };
+  }
+
+  if (action === "REVIEW") {
+    return {
+      action: "HUMAN REVIEW",
+      description:
+        "The transaction is routed away from automatic recovery for manual assessment.",
+      steps: [
+        "Automated recovery is not recommended.",
+        `Risk crossed the merchant review boundary.`,
+        `Configured cooldown: ${cooldown} minutes.`,
+      ],
+    };
+  }
+
+  if (action === "BLOCK") {
+    return {
+      action: "BLOCK TRANSACTION",
+      description:
+        "The transaction is stopped because the risk level exceeds the merchant safety boundary.",
+      steps: [
+        "No automated recovery should be attempted.",
+        "Transaction remains blocked by policy.",
+        `Configured cooldown: ${cooldown} minutes.`,
+      ],
+    };
+  }
+
+  return {
+    action: "NO AUTOMATED RECOVERY",
+    description:
+      "The system will not trigger another automated recovery attempt for this transaction.",
+    steps: [
+      "No automatic retry is recommended.",
+      "The current transaction flow is allowed to stop safely.",
+      `Configured cooldown: ${cooldown} minutes.`,
+    ],
+  };
 }
 
 function getTimelineSteps(result, customerProfile) {
@@ -574,6 +656,9 @@ function App() {
 
   const recommendationDetails =
     getRecommendationDetails(result);
+
+  const executionPlan =
+    getExecutionPlan(result);
 
   return (
     <div className="app-shell">
@@ -1376,6 +1461,45 @@ function App() {
                     )}
                   </div>
                 </div>
+
+                {executionPlan && (
+                  <div className="policy-box execution-box">
+                    <div className="policy-header">
+                      <div>
+                        <span>EXECUTION PLAN</span>
+
+                        <strong>
+                          {executionPlan.action}
+                        </strong>
+                      </div>
+
+                      <span className="policy-live">
+                        NEXT STEP
+                      </span>
+                    </div>
+
+                    <p className="execution-description">
+                      {executionPlan.description}
+                    </p>
+
+                    <div className="execution-steps">
+                      {executionPlan.steps.map(
+                        (step, index) => (
+                          <div
+                            className="execution-step"
+                            key={step}
+                          >
+                            <span>
+                              {String(index + 1).padStart(2, "0")}
+                            </span>
+
+                            <strong>{step}</strong>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {policy && (
                   <div className="policy-box">
