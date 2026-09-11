@@ -2410,3 +2410,29 @@ footer {
   font-size: 12px;
   line-height: 1.45;
 }
+
+.audit-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.summary-btn {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  padding: 7px 10px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.summary-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.summary-btn:active {
+  transform: translateY(1px);
+}

@@ -370,6 +370,61 @@ function getExecutionPlan(result) {
   };
 }
 
+function buildDecisionSummary(
+  result,
+  form,
+  customerProfile,
+  decisionExplanation
+) {
+  if (!result) return "";
+
+  const policy = result.metadata?.merchant_policy;
+
+  const risk = Number(result.risk_score ?? 0);
+  const recovery = Number(result.recovery_score ?? 0);
+
+  const retryCount = Number(
+    result.metadata?.retry_count_so_far ?? 0
+  );
+
+  return [
+    "RevenueRescue AI — Decision Summary",
+    "",
+    `Customer: ${form.customerId}`,
+    `Amount: INR ${Number(form.amount).toLocaleString("en-IN")}`,
+    `Payment Method: ${form.paymentMethod}`,
+    `Failure Reason: ${form.failureReason}`,
+    "",
+    `Risk Score: ${(risk * 100).toFixed(1)}%`,
+    `Recovery Probability: ${(recovery * 100).toFixed(1)}%`,
+    `Decision: ${result.action}`,
+    `Priority: ${result.priority || "—"}`,
+    `Reason Code: ${result.reason_code || "—"}`,
+    "",
+    `Customer Profile: ${customerProfile?.archetype?.replaceAll("_", " ") ||
+    "Unavailable"
+    }`,
+    "",
+    `Risk Tolerance: ${(
+      Number(result.merchant_risk_tolerance ?? 0) * 100
+    ).toFixed(0)}%`,
+    `Recovery Threshold: ${(
+      Number(
+        result.metadata?.recovery_score_threshold ?? 0
+      ) * 100
+    ).toFixed(0)}%`,
+    `Retries: ${retryCount} / ${policy?.max_auto_retries ?? "—"
+    }`,
+    `Auto Retry: ${policy?.auto_retry_enabled ? "ON" : "OFF"
+    }`,
+    `Auto Nudge: ${policy?.auto_nudge_enabled ? "ON" : "OFF"
+    }`,
+    `Cooldown: ${policy?.cooldown_minutes ?? "—"
+    } minutes`,
+    "",
+    `Why: ${decisionExplanation || "—"}`,
+  ].join("\n");
+}
 function getTimelineSteps(result, customerProfile) {
   if (!result) return [];
 
@@ -539,6 +594,22 @@ function App() {
     }
   };
 
+  const copyDecisionSummary = async () => {
+    try {
+      await navigator.clipboard.writeText(
+        decisionSummary
+      );
+
+      setCopied("decision-summary");
+
+      setTimeout(() => {
+        setCopied("");
+      }, 1600);
+    } catch {
+      setError("Unable to copy the decision summary.");
+    }
+  };
+
   const analyzeTransaction = async () => {
     setLoading(true);
     setError("");
@@ -660,6 +731,12 @@ function App() {
   const executionPlan =
     getExecutionPlan(result);
 
+  const decisionSummary = buildDecisionSummary(
+    result,
+    form,
+    customerProfile,
+    decisionExplanation
+  );
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -1575,19 +1652,28 @@ function App() {
                   <div className="audit-box">
                     <div className="audit-header">
                       <div>
-                        <span>
-                          AUDIT & PERSISTENCE
-                        </span>
+                        <span>AUDIT & PERSISTENCE</span>
 
                         <small>
-                          Transaction flow saved to
-                          Supabase
+                          Transaction flow saved to Supabase
                         </small>
                       </div>
 
-                      <span className="audit-status">
-                        ● SAVED
-                      </span>
+                      <div className="audit-actions">
+                        <button
+                          type="button"
+                          className="summary-btn"
+                          onClick={copyDecisionSummary}
+                        >
+                          {copied === "decision-summary"
+                            ? "Copied ✓"
+                            : "Copy Summary"}
+                        </button>
+
+                        <span className="audit-status">
+                          ● SAVED
+                        </span>
+                      </div>
                     </div>
 
                     <div className="audit-list">
